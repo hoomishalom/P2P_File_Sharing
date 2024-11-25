@@ -1,15 +1,7 @@
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <sys/time.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
+#include "../headers/main_headers.h"
 #include "../headers/sender.h"
 #include "../headers/receiver.h"
+#include "../headers/client.h"
+#include "../headers/server.h"
 
 
