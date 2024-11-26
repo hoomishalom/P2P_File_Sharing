@@ -5,110 +5,106 @@
 #include <string.h>
 
 void handleErrors() {
-    abort();
+    fprintf(stderr, "An error occurred\n");
+    exit(EXIT_FAILURE);
 }
 
-int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key, unsigned char *iv,
-            unsigned char *ciphertext, unsigned char *tag) {
+int encrypt_file(const char *input_filename, const char *output_filename, unsigned char *key, unsigned char *iv, unsigned char *tag) {
+    FILE *input_file = fopen(input_filename, "rb");
+    FILE *output_file = fopen(output_filename, "wb");
+    if (!input_file || !output_file) {
+        perror("File open error");
+        return -1;
+    }
+
     EVP_CIPHER_CTX *ctx;
     int len;
-    int ciphertext_len;
+    int ciphertext_len = 0;
+    unsigned char buffer[1024];
+    unsigned char ciphertext[1040]; // Buffer size + AES_BLOCK_SIZE
 
-    // Create and initialize the context
     if(!(ctx = EVP_CIPHER_CTX_new())) handleErrors();
-
-    // Initialize the encryption operation.
     if(1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL)) handleErrors();
-
-    // Set the key and IV
     if(1 != EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv)) handleErrors();
 
-    // Provide the message to be encrypted, and obtain the encrypted output.
-    if(1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len)) handleErrors();
-    ciphertext_len = len;
+    while ((len = fread(buffer, 1, 1024, input_file)) > 0) {
+        if(1 != EVP_EncryptUpdate(ctx, ciphertext, &len, buffer, len)) handleErrors();
+        fwrite(ciphertext, 1, len, output_file);
+        ciphertext_len += len;
+    }
 
-    // Finalize the encryption.
-    if(1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)) handleErrors();
+    if(1 != EVP_EncryptFinal_ex(ctx, ciphertext, &len)) handleErrors();
+    fwrite(ciphertext, 1, len, output_file);
     ciphertext_len += len;
 
-    // Get the tag
     if(1 != EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag)) handleErrors();
 
-    // Clean up
     EVP_CIPHER_CTX_free(ctx);
+    fclose(input_file);
+    fclose(output_file);
 
     return ciphertext_len;
 }
 
-int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *tag, unsigned char *key,
-            unsigned char *iv, unsigned char *plaintext) {
-    EVP_CIPHER_CTX *ctx;
-    int len;
-    int plaintext_len;
-    int ret;
-
-    // Create and initialize the context
-    if(!(ctx = EVP_CIPHER_CTX_new())) handleErrors();
-
-    // Initialize the decryption operation.
-    if(!EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL)) handleErrors();
-
-    // Set the key and IV
-    if(!EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv)) handleErrors();
-
-    // Provide the message to be decrypted, and obtain the plaintext output.
-    if(!EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len)) handleErrors();
-    plaintext_len = len;
-
-    // Set expected tag value.
-    if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag)) handleErrors();
-
-    // Finalize the decryption.
-    ret = EVP_DecryptFinal_ex(ctx, plaintext + len, &len);
-
-    // Clean up
-    EVP_CIPHER_CTX_free(ctx);
-
-    if(ret > 0) {
-        plaintext_len += len;
-        return plaintext_len;
-    } else {
-        // Verification failed
+int decrypt_file(const char *input_filename, const char *output_filename, unsigned char *key, unsigned char *iv, unsigned char *tag) {
+    FILE *input_file = fopen(input_filename, "rb");
+    FILE *output_file = fopen(output_filename, "wb");
+    if (!input_file || !output_file) {
+        perror("File open error");
         return -1;
     }
+
+    EVP_CIPHER_CTX *ctx;
+    int len;
+    int plaintext_len = 0;
+    unsigned char buffer[1024];
+    unsigned char plaintext[1024];
+
+    if(!(ctx = EVP_CIPHER_CTX_new())) handleErrors();
+    if(!EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL)) handleErrors();
+    if(!EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv)) handleErrors();
+    if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag)) handleErrors();
+
+    while ((len = fread(buffer, 1, 1024, input_file)) > 0) {
+        if(!EVP_DecryptUpdate(ctx, plaintext, &len, buffer, len)) handleErrors();
+        fwrite(plaintext, 1, len, output_file);
+        plaintext_len += len;
+    }
+
+    if(EVP_DecryptFinal_ex(ctx, plaintext, &len) > 0) {
+        fwrite(plaintext, 1, len, output_file);
+        plaintext_len += len;
+    } else {
+        handleErrors();
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+    fclose(input_file);
+    fclose(output_file);
+
+    return plaintext_len;
 }
 
 int main() {
-    // Key and IV
     unsigned char key[32];
     unsigned char iv[12];
     unsigned char tag[16];
 
-    // Generate random key and IV
     if (!RAND_bytes(key, sizeof(key)) || !RAND_bytes(iv, sizeof(iv))) {
         handleErrors();
     }
 
-    // Data to encrypt
-    unsigned char *plaintext = (unsigned char *)"Hello, this is a secret message!";
-    int plaintext_len = strlen((char *)plaintext);
-
-    // Buffers for ciphertext and decrypted text
-    unsigned char ciphertext[128];
-    unsigned char decryptedtext[128];
-
-    // Encrypt the plaintext
-    int ciphertext_len = encrypt(plaintext, plaintext_len, key, iv, ciphertext, tag);
-
-    // Decrypt the ciphertext
-    int decryptedtext_len = decrypt(ciphertext, ciphertext_len, tag, key, iv, decryptedtext);
-
-    if(decryptedtext_len < 0) {
-        printf("Decryption failed\n");
-    } else {
-        decryptedtext[decryptedtext_len] = '\0';
-        printf("Decrypted text: %s\n", decryptedtext);
+    if (encrypt_file("plaintext.txt", "encrypted.bin", key, iv, tag) < 0) {
+        fprintf(stderr, "Encryption failed\n");
+        return 1;
     }
+
+    if (decrypt_file("encrypted.bin", "decrypted.txt", key, iv, tag) < 0) {
+        fprintf(stderr, "Decryption failed\n");
+        return 1;
+    }
+
+    printf("Encryption and decryption completed successfully.\n");
 
     return 0;
 }
