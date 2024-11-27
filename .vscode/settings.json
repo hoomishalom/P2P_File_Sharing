@@ -1,8 +1,0 @@
-{
-    "C_Cpp.dimInactiveRegions": false,
-    "files.associations": {
-        "main_headers.h": "c",
-        "aes.h": "c",
-        "evp.h": "c"
-    }
-}
