@@ -1,5 +1,15 @@
 # README
 
+## Requirements
+
+- libssl
+
+you can download all requirements using this command in the terminal
+
+```shell
+sudo apt-get install libssl-dev
+```
+
 ## Explanation About The Project
 
 In short it's a simple decentralized encrypted file sharing program.

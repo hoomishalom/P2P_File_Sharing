@@ -13,5 +13,15 @@
 #include <arpa/inet.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <openssl/rsa.h>
+#include <openssl/bn.h>
 
-#endif
+#ifndef stddbg
+#define stddbg stderr   // standard debbug output
+#endif  // stddbg
+
+#ifndef ERR_MSG_LEN
+#define ERR_MSG_LEN 1024  // max error message length
+#endif  // ERR_MSG_LEN
+
+#endif  // MAIN_HEADERS_H_INCLUDED
