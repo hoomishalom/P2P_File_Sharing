@@ -6,7 +6,7 @@
 
 you can download all requirements using this command in the terminal
 
-```shell
+```console
 sudo apt-get install libssl-dev
 ```
 
