@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- libssl
+- openssl
 
 you can download all requirements using this command in the terminal
 
