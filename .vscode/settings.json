@@ -3,6 +3,15 @@
     "files.associations": {
         "main_headers.h": "c",
         "aes.h": "c",
-        "evp.h": "c"
-    }
+        "evp.h": "c",
+        "stdlib.h": "c",
+        "encrypt_decrypt.h": "c",
+        "string.h": "c",
+        "pem.h": "c",
+        "stdio.h": "c"
+    },
+    "todohighlight.include": [
+        "**/*.c",
+        "**/*.h",
+    ],
 }

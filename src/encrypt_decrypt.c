@@ -1,27 +1,68 @@
-#include "../headers/main_headers.h"
 #include "../headers/encrypt_decrypt.h"
-
-#ifndef ERR_MSG_LEN
-#define ERR_MSG_LEN 1024
-#endif
-
-#define CHUNK_SIZE 1024
-
-char err_msg[ERR_MSG_LEN]; // buffer for error messages
 
 extern int errno;       // error number from <errno.h>
 
+char err_msg[ERR_MSG_LEN]; // buffer for error messages
+
+// Helper functions
+
+void handle_errors(const char *msg, const char *format)
+{
+    snprintf(err_msg, ERR_MSG_LEN, "%s: %s\n", msg, format);
+    fprintf(stddbg, err_msg);
+}
+
+
+// Initialization
+
+char tmp_template[TMP_FOLDER_PATH_LEN] = "/tmp/files_XXXXXX"; // template for mkdtemp function
+char tmp_path[TMP_FOLDER_PATH_LEN];  // path of tmp function, output of mkdtemp function
+
+mode_t session_mode = S_IRWXU | S_IROTH;    // modes for session folder
+char *session_name = "/.session";    // name of the session dir
+char session_path[TMP_FOLDER_PATH_LEN] = "";  // path of the session dir, output of mkdir function
+
+int init_encrypt_decrypt(char *dir_name) {
+    strcpy(tmp_path, tmp_template);
+    mkdtemp(tmp_path);
+
+    if(tmp_path == NULL) 
+    {
+        handle_errors("init_encrypt_decrypt - creating temp dir failed", strerror(errno));
+        return -1;
+    }
+
+    if(dir_name != NULL) // user inputed dir_name
+    {
+        session_name = dir_name;
+    }
+
+    // create session_path
+    strcat(session_path, tmp_path);
+    strcat(session_path, session_name);
+
+    if(mkdir(session_path, session_mode) == -1) // try to make the session dir
+    {
+        handle_errors("init_encrypt_decrypt - creating session dir failed", strerror(errno));
+        return -2; 
+    }
+}
 
 // AES-GCM encryptions/decryption functions
 
-int encrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath, const char *key, const char *iv, char *tag) 
+int encrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char *key, const char *iv, char *tag) 
 {
+    char *file_name = basename(input_filepath); // gets the file name from the input file path
+    char file_path_name_buffer[1024];   // buffer to combine output_filepath and file_name
+    strcat(file_path_name_buffer, output_filepath);
+    strcat(file_path_name_buffer, file_name);
+
     FILE *input_file = fopen(input_filepath, "rb");
     FILE *output_file = fopen(output_filepath, "wb");
 
     if(input_file == NULL || output_file == NULL) 
     {
-        perror("File open error");
+        handle_errors("encrypt_file_aes_gcm - Error openning files", strerror(errno));
         return -1;
     }
 
@@ -33,16 +74,14 @@ int encrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
 
     if((ctx = EVP_CIPHER_CTX_new()) == NULL) // creating new ctx for ecryption
     {
-        snprintf(err_msg, ERR_MSG_LEN, "encrypt_file_aes_gcm - Error creating new ctx: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
+        handle_errors("encrypt_file_aes_gcm - Error creating new ctx", ERR_error_string(ERR_get_error(), NULL));
         EVP_CIPHER_CTX_free(ctx);   // frees the ctx
         return -2;
     }
 
     if(EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, iv) == 0) // initializing encryption
-    {
-        snprintf(err_msg, ERR_MSG_LEN, "encrypt_file_aes_gcm - Error initializing encryption: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
+    {   
+        handle_errors("encrypt_file_aes_gcm - Error initializing encryption", ERR_error_string(ERR_get_error(), NULL));
         EVP_CIPHER_CTX_free(ctx);   // frees the ctx
         return -3;
     }
@@ -51,8 +90,7 @@ int encrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
     {
         if(EVP_EncryptUpdate(ctx, temp_ciphertext, &temp_len, buffer, temp_len) != 1)   // encrypts block and checks for errors
         {
-            snprintf(err_msg, ERR_MSG_LEN, "encrypt_file_aes_gcm - Error encrypting data: %s\n", strerror(errno));
-            fprintf(stddbg, err_msg);
+            handle_errors("encrypt_file_aes_gcm - Error encrypting data", ERR_error_string(ERR_get_error(), NULL));
             EVP_CIPHER_CTX_free(ctx);   // frees the ctx
             return -4;
         }
@@ -61,9 +99,8 @@ int encrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
     }
 
     if(EVP_EncryptFinal_ex(ctx, temp_ciphertext, &temp_len) != 1)   // finalizes encryption and checks for errors
-    {
-        snprintf(err_msg, ERR_MSG_LEN, "encrypt_file_aes_gcm - Error finalizing encryption: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
+    {   
+        handle_errors("encrypt_file_aes_gcm - Error finalizing encryption", ERR_error_string(ERR_get_error(), NULL));
         EVP_CIPHER_CTX_free(ctx);   // frees the ctx
         return -5;
     }
@@ -71,8 +108,7 @@ int encrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
 
     if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag) != 1)    // gets authentication tag
     {
-        snprintf(err_msg, ERR_MSG_LEN, "encrypt_file_aes_gcm - Error getting authentication tag: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
+        handle_errors("encrypt_file_aes_gcm - Error getting authentication tag", ERR_error_string(ERR_get_error(), NULL));
         EVP_CIPHER_CTX_free(ctx);   // frees the ctx
         return -6;
     }
@@ -85,14 +121,19 @@ int encrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
 }
 
 
-int decrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath, const char *key, const char *iv, char *tag) 
+int decrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char *key, const char *iv, char *tag) 
 {
+    const char *file_name = basename(input_filepath); // gets the file name from the input file path
+    char file_path_name_buffer[1024];   // buffer to combine output_filepath and file_name
+    strcat(file_path_name_buffer, output_filepath);
+    strcat(file_path_name_buffer, file_name);
+
     FILE *input_file = fopen(input_filepath, "rb");
-    FILE *output_file = fopen(output_filepath, "wb");
+    FILE *output_file = fopen(file_path_name_buffer, "wb");
 
     if(input_file == NULL || output_file == NULL) 
     {
-        perror("File open error");
+        handle_errors("decrypt_file_aes_gcm - Error openning files", strerror(errno));
         return -1;
     }
 
@@ -104,15 +145,13 @@ int decrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
 
     if((ctx = EVP_CIPHER_CTX_new()) == NULL) // creating new ctx for ecryption
     {
-        snprintf(err_msg, ERR_MSG_LEN, "decrypt_file_aes_gcm - Error creating new ctx: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
+        handle_errors("decrypt_file_aes_gcm - Error creating new ctx", ERR_error_string(ERR_get_error(), NULL));
         return -2;
     }
 
     if(EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, iv) == 0) // initializing decryption
     {
-        snprintf(err_msg, ERR_MSG_LEN, "decrypt_file_aes_gcm - Error initializing decryption: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
+        handle_errors("decrypt_file_aes_gcm - Error initializing decryption", ERR_error_string(ERR_get_error(), NULL));
         EVP_CIPHER_CTX_free(ctx);   // frees the ctx
         return -3;
     }
@@ -121,8 +160,7 @@ int decrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
     {
         if(EVP_DecryptUpdate(ctx, temp_plaintext, &temp_len, buffer, temp_len) != 1)   // decrypts block and checks for errors
         {
-            snprintf(err_msg, ERR_MSG_LEN, "decrypt_file_aes_gcm - Error decrypting data: %s\n", strerror(errno));
-            fprintf(stddbg, err_msg);
+            handle_errors("decrypt_file_aes_gcm - Error decrypting data", ERR_error_string(ERR_get_error(), NULL));
             EVP_CIPHER_CTX_free(ctx);   // frees the ctx
             return -4;
         }
@@ -132,8 +170,7 @@ int decrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
 
     if(EVP_DecryptFinal_ex(ctx, temp_plaintext, &temp_len) != 1)   // finalizes decryption and checks for errors
     {
-        snprintf(err_msg, ERR_MSG_LEN, "decrypt_file_aes_gcm - Error finalizing decryption: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
+        handle_errors("decrypt_file_aes_gcm - Error finalizing decryption", ERR_error_string(ERR_get_error(), NULL));
         EVP_CIPHER_CTX_free(ctx);   // frees the ctx
         return -5;
     }
@@ -141,8 +178,7 @@ int decrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
 
     if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag) != 1)    // set authentication tag
     {
-        snprintf(err_msg, ERR_MSG_LEN, "decrypt_file_aes_gcm - Authentication failed: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
+        handle_errors("decrypt_file_aes_gcm - Authentication failed", ERR_error_string(ERR_get_error(), NULL));
         EVP_CIPHER_CTX_free(ctx);   // frees the ctx
         return -6;
     }
@@ -157,101 +193,150 @@ int decrypt_file_aes_gcm(const char *input_filepath, const char *output_filepath
 
 // RSA encryptions/decryption functions
 
-int generate_key_rsa(RSA *rsa, int bits)   // RSA *rsa should be a pointer to a none initialized RSA struct
+EVP_PKEY* generate_key_rsa(int bits)
 {
-    BIGNUM *big_num = NULL;    // BIGNUM structure
-    unsigned long exponent = RSA_F4; // public exponent
-    
-    
-    big_num = BN_new(); // creates new BIGNUM structure
-    if(BN_set_word(big_num, exponent) != 1) // sets the big_num to the exponent
+    EVP_PKEY_CTX *ctx = NULL;
+    EVP_PKEY *pkey = NULL;
+
+    ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+    if(ctx == NULL)
     {
-        sprintf(err_msg, ERR_MSG_LEN, "generate_key_rsa - Error setting big_num: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
-        BN_free(big_num);  // frees the BIGNUM structure
+        handle_errors("generate_key_rsa - failed creating CTX", ERR_error_string(ERR_get_error(), NULL));
+        return NULL;
+    }
+
+    if(EVP_PKEY_keygen_init(ctx) <= 0)
+    {
+        handle_errors("generate_key_rsa - failed initializing keygen", ERR_error_string(ERR_get_error(), NULL));
+        EVP_PKEY_CTX_free(ctx);
+        return NULL;
+    }
+
+    if(EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, bits) <= 0)
+    {
+        handle_errors("generate_key_rsa - failed setting keygen bits", ERR_error_string(ERR_get_error(), NULL));
+        EVP_PKEY_CTX_free(ctx);
+        return NULL;
+    }
+
+    if(EVP_PKEY_keygen(ctx, &pkey) <= 0)
+    {
+        handle_errors("generate_key_rsa - failed keygen", ERR_error_string(ERR_get_error(), NULL));
+        EVP_PKEY_CTX_free(ctx);
+        return NULL;
+    }
+
+    EVP_PKEY_CTX_free(ctx);
+    return pkey;
+}
+
+
+char* get_pem_from_pkey(EVP_PKEY *pkey)
+{
+    BIO *bio = BIO_new(BIO_s_mem());
+    if(bio == NULL) {
+        handle_errors("get_pem_from_pkey - failed creating BIO", ERR_error_string(ERR_get_error(), NULL));
+        return NULL;
+    }
+
+    if(PEM_write_bio_PUBKEY(bio, pkey) != 1)
+    {
+        handle_errors("get_pem_from_pkey - failed writing to BIO", ERR_error_string(ERR_get_error(), NULL));
+        BIO_free(bio);
+        return NULL;
+    }
+
+    char *pem_data;
+    size_t pem_len = BIO_get_mem_data(bio, &pem_data);
+    char *pem_str = strndup(pem_data, pem_len);
+
+    BIO_free(bio);
+    return pem_str;
+}
+
+
+EVP_PKEY* get_pkey_from_pem(const char *public_key)
+{
+    BIO *bio = BIO_new_mem_buf(public_key, -1);
+    if(bio == NULL) {
+        handle_errors("get_pkey_from_pem - failed creating BIO", ERR_error_string(ERR_get_error(), NULL));
+        return NULL;
+    }
+
+    EVP_PKEY *pkey = NULL;
+    pkey = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+    if(pkey == NULL)
+    {
+        handle_errors("get_pkey_from_pem - failed reading from BIO", ERR_error_string(ERR_get_error(), NULL));
+        BIO_free(bio);
+        return NULL;
+    }
+
+    BIO_free(bio);
+    return pkey;
+}
+
+int encrpy_string_rsa(const unsigned char *plaintext, const size_t plaintext_len, const char *public_key, unsigned char *ciphertext)
+{
+    EVP_PKEY *pkey = get_pkey_from_pem(public_key);
+    if(pkey == NULL)
+    {
+        handle_errors("encrpy_string_rsa - failed getting pkey", ERR_error_string(ERR_get_error(), NULL));
         return -1;
     }
 
-    rsa = RSA_new();    // creates new RSA structure
-    if(RSA_generate_key_ex(rsa, bits, big_num, NULL) != 1) // generates RSA key
+    EVP_PKEY_CTX *ctx = NULL;
+    ctx = EVP_PKEY_CTX_new(pkey, NULL);
+    if(ctx == NULL)
     {
-        sprintf(err_msg, ERR_MSG_LEN, "generate_key_rsa - Error generating RSA key: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
-        RSA_free(rsa);  // frees the RSA structure
-        BN_free(big_num);  // frees the BIGNUM structure
+        handle_errors("encrpy_string_rsa - failed creating CTX", ERR_error_string(ERR_get_error(), NULL));
         return -2;
     }
 
-    RSA_free(rsa);  // frees the RSA structure
-    BN_free(big_num);  // frees the BIGNUM structure
-    return 0;
-}
-
-
-int get_public_key_from_der(RSA *rsa, unsigned char *public_key)
-{
-    int len = i2d_RSAPublicKey(rsa, &public_key);   // extracts publick key from rsa
-    if(len == -1)
+    if(EVP_PKEY_encrypt_init(ctx) <= 0) 
     {
-        sprintf(err_msg, ERR_MSG_LEN, "get_public_key_der - Error getting public key: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
-        return -1;
+        handle_errors("encrpy_string_rsa - failed initializing encryption", ERR_error_string(ERR_get_error(), NULL));
+        EVP_PKEY_CTX_free(ctx);
+        return -3;
     }
 
-    return len;
-}
-
-
-int get_rsa_from_public_key(const unsigned char *der, unsigned int der_len, RSA **rsa)
-{
-    d2i_RSAPublicKey(rsa, &der, der_len);    // loads public key from der into *rsa
-    if(rsa == NULL)
+    size_t ciphertext_len;
+    if(EVP_PKEY_encrypt(ctx, ciphertext, &ciphertext_len, plaintext, plaintext_len) <= 0)
     {
-        sprintf(err_msg, ERR_MSG_LEN, "load_rsa_public_key_der - Error loading public key: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
-        return -1;
+        handle_errors("encrpy_string_rsa - failed encrypting", ERR_error_string(ERR_get_error(), NULL));
+        EVP_PKEY_CTX_free(ctx);
+        return -4;
     }
 
-    return 0;
-}
-
-
-int encrypt_string_rsa(const char *plaintext, const char *public_key, size_t public_key_len, unsigned char *ciphertext)
-{
-    RSA *rsa = NULL;   // RSA structure
-    int ciphertext_len; // length of the encrypted text   
-
-    if(get_rsa_from_public_key(public_key, public_key_len, &rsa) < 0)    // loads public key from der into *rsa    
-    {
-        sprintf(err_msg, ERR_MSG_LEN, "encrypt_string_rsa - Error loading public key: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
-        return -1;
-    }
-
-    // encrypt the plaintext
-    ciphertext_len = RSA_public_encrypt(strlen(plaintext), plaintext, ciphertext, rsa, RSA_PKCS1_OAEP_PADDING);
-    if(ciphertext_len == -1)    // checks for errors
-    {
-        sprintf(err_msg, ERR_MSG_LEN, "encrypt_string_rsa - Error encrypting data: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
-        RSA_free(rsa);  // frees the RSA structure
-        return -2;
-    }
-
-    RSA_free(rsa);  // frees the RSA structure
+    EVP_PKEY_CTX_free(ctx);
     return ciphertext_len;
 }
 
-
-int decrypt_string_rsa(const unsigned char *ciphertext, size_t ciphertext_len, RSA *rsa, char *plaintext)
+int decrypt_string_rsa(const unsigned char *ciphertext, const size_t ciphertext_len, EVP_PKEY *private_key, unsigned char *plaintext)
 {
-    int plaintext_len;
-    if (plaintext_len = RSA_private_decrypt(ciphertext_len, ciphertext, plaintext, rsa, RSA_PKCS1_OAEP_PADDING) == -1) {
-        sprintf(err_msg, ERR_MSG_LEN, "decrypt_string_rsa - Error decrypting data: %s\n", strerror(errno));
-        fprintf(stddbg, err_msg);
+    EVP_PKEY_CTX *ctx = NULL;
+    ctx = EVP_PKEY_CTX_new(private_key, NULL);
+    if(ctx == NULL)
+    {
+        handle_errors("decrypt_string_rsa - failed creating CTX", ERR_error_string(ERR_get_error(), NULL));
         return -1;
     }
 
-    plaintext[plaintext_len] = '\0';    // null-terminates the decrypted string
+    if(EVP_PKEY_decrypt_init(ctx) <= 0) 
+    {
+        handle_errors("decrypt_string_rsa - failed initializing decryption", ERR_error_string(ERR_get_error(), NULL));
+        EVP_PKEY_CTX_free(ctx);
+        return -2;
+    }
+
+    size_t plaintext_len;
+    if(EVP_PKEY_decrypt(ctx, plaintext, &plaintext_len, ciphertext, ciphertext_len) <= 0)
+    {
+        handle_errors("decrypt_string_rsa - failed decrypting", ERR_error_string(ERR_get_error(), NULL));
+        EVP_PKEY_CTX_free(ctx);
+        return -3;
+    }
+
+    EVP_PKEY_CTX_free(ctx);
     return plaintext_len;
 }
