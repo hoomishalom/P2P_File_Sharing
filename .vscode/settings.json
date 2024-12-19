@@ -8,7 +8,11 @@
         "encrypt_decrypt.h": "c",
         "string.h": "c",
         "pem.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "server.h": "c",
+        "time.h": "c",
+        "message_queue.h": "c",
+        "stdbool.h": "c"
     },
     "todohighlight.include": [
         "**/*.c",

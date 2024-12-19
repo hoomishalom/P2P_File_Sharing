@@ -2,50 +2,14 @@
 
 extern int errno;       // error number from <errno.h>
 
-char err_msg[ERR_MSG_LEN]; // buffer for error messages
+char err_msg[ENC_DEC_ERR_MSG_LEN]; // buffer for error messages
 
 // Helper functions
 
-void handle_errors(const char *msg, const char *format)
+static void handle_errors(const char *msg, const char *format)
 {
-    snprintf(err_msg, ERR_MSG_LEN, "%s: %s\n", msg, format);
-    fprintf(stddbg, err_msg);
-}
-
-
-// Initialization
-
-char tmp_template[TMP_FOLDER_PATH_LEN] = "/tmp/files_XXXXXX"; // template for mkdtemp function
-char tmp_path[TMP_FOLDER_PATH_LEN];  // path of tmp function, output of mkdtemp function
-
-mode_t session_mode = S_IRWXU | S_IROTH;    // modes for session folder
-char *session_name = "/.session";    // name of the session dir
-char session_path[TMP_FOLDER_PATH_LEN] = "";  // path of the session dir, output of mkdir function
-
-int init_encrypt_decrypt(char *dir_name) {
-    strcpy(tmp_path, tmp_template);
-    mkdtemp(tmp_path);
-
-    if(tmp_path == NULL) 
-    {
-        handle_errors("init_encrypt_decrypt - creating temp dir failed", strerror(errno));
-        return -1;
-    }
-
-    if(dir_name != NULL) // user inputed dir_name
-    {
-        session_name = dir_name;
-    }
-
-    // create session_path
-    strcat(session_path, tmp_path);
-    strcat(session_path, session_name);
-
-    if(mkdir(session_path, session_mode) == -1) // try to make the session dir
-    {
-        handle_errors("init_encrypt_decrypt - creating session dir failed", strerror(errno));
-        return -2; 
-    }
+    snprintf(err_msg, ENC_DEC_ERR_MSG_LEN, "%s: %s\n", msg, format);
+    fprintf(ENC_DEC_stddbg, err_msg);
 }
 
 // AES-GCM encryptions/decryption functions
@@ -53,7 +17,7 @@ int init_encrypt_decrypt(char *dir_name) {
 int encrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char *key, const char *iv, char *tag) 
 {
     char *file_name = basename(input_filepath); // gets the file name from the input file path
-    char file_path_name_buffer[1024];   // buffer to combine output_filepath and file_name
+    char file_path_name_buffer[ENC_DEC_FILE_PATH_LEN];   // buffer to combine output_filepath and file_name
     strcat(file_path_name_buffer, output_filepath);
     strcat(file_path_name_buffer, file_name);
 
@@ -69,8 +33,8 @@ int encrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char
     EVP_CIPHER_CTX *ctx;
     int temp_len;   // used to store the length of the current encrypted block
     int ciphertext_len = 0; // used to return the final length of the cipher text
-    unsigned char buffer[CHUNK_SIZE];
-    unsigned char temp_ciphertext[CHUNK_SIZE + 16]; // CHUNK_SIZE + AES_CHUNK_SIZE (16) 
+    unsigned char buffer[ENC_DEC_CHUNK_SIZE];
+    unsigned char temp_ciphertext[ENC_DEC_CHUNK_SIZE + 16]; // ENC_DEC_CHUNK_SIZE + AES_ENC_DEC_CHUNK_SIZE (16) 
 
     if((ctx = EVP_CIPHER_CTX_new()) == NULL) // creating new ctx for ecryption
     {
@@ -86,7 +50,7 @@ int encrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char
         return -3;
     }
 
-    while((temp_len = fread(buffer, 1, CHUNK_SIZE, input_file)) > 0)  // raeding each block of the input file
+    while((temp_len = fread(buffer, 1, ENC_DEC_CHUNK_SIZE, input_file)) > 0)  // raeding each block of the input file
     {
         if(EVP_EncryptUpdate(ctx, temp_ciphertext, &temp_len, buffer, temp_len) != 1)   // encrypts block and checks for errors
         {
@@ -124,7 +88,7 @@ int encrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char
 int decrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char *key, const char *iv, char *tag) 
 {
     const char *file_name = basename(input_filepath); // gets the file name from the input file path
-    char file_path_name_buffer[1024];   // buffer to combine output_filepath and file_name
+    char file_path_name_buffer[ENC_DEC_FILE_PATH_LEN];   // buffer to combine output_filepath and file_name
     strcat(file_path_name_buffer, output_filepath);
     strcat(file_path_name_buffer, file_name);
 
@@ -140,8 +104,8 @@ int decrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char
     EVP_CIPHER_CTX *ctx;
     int temp_len;   // used to store the length of the current decrypted block
     int plaintext_len = 0; // used to return the final length of the  plaintext
-    unsigned char buffer[CHUNK_SIZE];
-    unsigned char temp_plaintext[CHUNK_SIZE]; // CHUNK_SIZE 
+    unsigned char buffer[ENC_DEC_CHUNK_SIZE];
+    unsigned char temp_plaintext[ENC_DEC_CHUNK_SIZE]; // ENC_DEC_CHUNK_SIZE 
 
     if((ctx = EVP_CIPHER_CTX_new()) == NULL) // creating new ctx for ecryption
     {
@@ -156,7 +120,7 @@ int decrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char
         return -3;
     }
 
-    while((temp_len = fread(buffer, 1, CHUNK_SIZE, input_file)) > 0)  // raeding each block of the input file
+    while((temp_len = fread(buffer, 1, ENC_DEC_CHUNK_SIZE, input_file)) > 0)  // raeding each block of the input file
     {
         if(EVP_DecryptUpdate(ctx, temp_plaintext, &temp_len, buffer, temp_len) != 1)   // decrypts block and checks for errors
         {

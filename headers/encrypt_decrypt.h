@@ -1,8 +1,6 @@
 #ifndef ENCRYPT_DECRYPT_H_INCLUDED
 #define ENCRYPT_DECRYPT_H_INCLUDED
 
-#define OPENSSL_API_COMPAT 0x10100000L
-
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
@@ -15,10 +13,11 @@
 #include <stdlib.h>
 #include <libgen.h>
 
-#define stddbg stderr   // standard debbug output for encrypt_decrypt.c
-#define ERR_MSG_LEN 1024  // max error message length for encrypt_decrypt.c
-#define CHUNK_SIZE 1024    // size of the chunks to be read from the file when enrypting/decrypting
-#define TMP_FOLDER_PATH_LEN 1024    // max length of the tmp folder path
+#define ENC_DEC_stddbg stderr   // standard debbug output
+#define ENC_DEC_ERR_MSG_LEN 1024  // max error message length
+#define ENC_DEC_FILE_PATH_LEN 1024  // max length of the file path
+
+#define ENC_DEC_CHUNK_SIZE 1024    // size of the chunks to be read from the file when enrypting/decrypting
 
 /*
 initliazes the program
