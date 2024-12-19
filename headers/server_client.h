@@ -3,7 +3,8 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h> 
+#include <stdlib.h>
+#include <unistd.h>
 #include <errno.h>
 #include <sys/time.h>
 #include <sys/socket.h>
@@ -75,7 +76,7 @@ connects this node to the network
 @param broadcasting_socket socket to broadcast messages
 @return exit code -1 on error, 0 on success
 */
-int connect_to_network(int broadcasting_socket);
+int send_connect_to_network(int broadcasting_socket);
 
 /*
 approves a node trying to connect to the network
@@ -84,7 +85,7 @@ approves a node trying to connect to the network
 @param node_id id of the node
 @return exit code -1 on error, 0 on success
 */
-int approve_node_connection(int out_socket, const char *node_id);
+int send_approve_node_connection(int out_socket, const char *node_id);
 
 /*
 disapproves a node trying to connect to the network (for example: due to an unavailable name)
@@ -95,7 +96,7 @@ disapproves a node trying to connect to the network (for example: due to an unav
 @param disapprove_reason reason for disapproval
 @return exit code -1 on error, 0 on success
 */
-int disapprove_node_connection(const int out_socket, const char *node_ip, int node_port, const char *disapprove_reason);
+int send_disapprove_node_connection(const int out_socket, const char *node_ip, int node_port, const char *disapprove_reason);
 
 /*
 starts the node, creates sockets and listens for incoming connections

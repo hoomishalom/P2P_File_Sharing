@@ -15,13 +15,16 @@ int is_empty(MessageQueue *queue)
 
 void del_queue(MessageQueue *queue)
 {
-    while (queue->len > 0)
+    if (queue != NULL)
     {
-        Message *msg = queue->head;
-        queue->head = msg->next;
-        queue->len--;
+        while (queue->len > 0)
+        {
+            Message *msg = queue->head;
+            queue->head = msg->next;
+            queue->len--;
 
-        free(msg);
+            free(msg);
+        }
     }
 }
 

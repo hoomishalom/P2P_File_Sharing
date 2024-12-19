@@ -3,14 +3,14 @@
     #include <stdlib.h>
     #include <string.h>
 
-    #define MAX_DATA_SIZE 1024
+    #define QUEUE_MAX_DATA_SIZE 1024
 
     typedef struct Message Message;
 
     typedef struct MessageQueue MessageQueue;
 
     struct Message{
-        char data[MAX_DATA_SIZE];
+        char data[QUEUE_MAX_DATA_SIZE];
         size_t len;
         Message *next;
     };

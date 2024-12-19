@@ -1,8 +1,7 @@
 #include "../headers/main.h"
 #include "../headers/sender.h"
 #include "../headers/receiver.h"
-#include "../headers/client.h"
-#include "../headers/server.h"
+#include "../headers/server_client.h"
 #include "../headers/encrypt_decrypt.h"
 
 extern int errno;   // error number from <errno.h>
@@ -51,5 +50,3 @@ int init_encrypt_decrypt(char *dir_name) {
         return -2; 
     }
 }
-
-

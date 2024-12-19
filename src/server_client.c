@@ -16,7 +16,6 @@ node_s server_node;
 
 size_t connected_nodes = 0;
 node_s *nodes[MAX_NODES];
-
 MessageQueue *messages[MAX_NODES];
 
 bool busy = false;  // true if we in the proccess of sending a file
@@ -68,6 +67,18 @@ static node_s* get_node_by_id(const char *id)
         }
     }
     return NULL;    // node does not exist
+}
+
+
+static int cleanip()
+{
+    free(server_node.addr); // frees server_node addr
+    for (size_t i = 0; i < connected_nodes; i++)
+    {
+        free(nodes[i]->addr);   // frees node addr
+        free(nodes[i]); // frees node
+        del_queue(messages[i]); // frees message queue
+    }
 }
 
 
@@ -160,7 +171,7 @@ static int create_broadcast_socket(struct sockaddr_in *server_addr, int reuseadd
 }
 
 
-int connect_to_network(int broadcasting_socket)
+int send_connect_to_network(int broadcasting_socket)
 {
     int port = ntohs(server_node.addr->sin_port);
     char *id = server_node.id;
@@ -182,7 +193,7 @@ int connect_to_network(int broadcasting_socket)
 }
 
 
-int approve_node_connection(const int out_socket, const char *node_id)
+int send_approve_node_connection(const int out_socket, const char *node_id)
 {
     char *id = server_node.id;
     char *name = server_node.name;
@@ -202,7 +213,7 @@ int approve_node_connection(const int out_socket, const char *node_id)
 }
 
 
-int disapprove_node_connection(const int out_socket, const char *node_ip, int node_port, const char *disapprove_reason)
+int send_disapprove_node_connection(const int out_socket, const char *node_ip, int node_port, const char *disapprove_reason)
 {
     struct sockaddr_in node_addr;
     set_socket_addr(node_ip, node_port, &node_addr);
@@ -220,7 +231,7 @@ int disapprove_node_connection(const int out_socket, const char *node_ip, int no
 }
 
 
-int node_disconnect(int socket)
+int send_node_disconnect(int socket)
 {
     // TODO:
     // del_queue(messages[socket]);
@@ -237,19 +248,19 @@ static int message_interchange_out(int socket, char *message, size_t len, int po
     switch(type)
     {
         case MSG_TYPE_NETCONN:
-            connect_to_network(socket);
+            send_connect_to_network(socket);
             break;
         case MSG_TYPE_NETCONN_APPROVED:
-            approve_node_connection(socket, id);
+            send_approve_node_connection(socket, id);
             break;
         case MSG_TYPE_NETCONN_DISAPPROVED:
             char *node_ip = strtok(data, DATA_DELIMITER);
             int node_port = atoi(strtok(NULL, DATA_DELIMITER));
             char *disapprove_reason = strtok(NULL, DATA_DELIMITER);
-            disapprove_node_connection(socket, node_ip, node_port, disapprove_reason);
+            send_disapprove_node_connection(socket, node_ip, node_port, disapprove_reason);
             break;
         case MSG_TYPE_NETDISC:
-            node_disconnect(socket);
+            send_node_disconnect(socket);
             break;
         case MSG_TYPE_SENDREQ:
             break;
@@ -298,6 +309,10 @@ int run_node(const char *name, const char *ip, const int port, const int backlog
     // setup server node
     generate_id(server_node.id, NODE_ID_LEN);
     strcpy(server_node.name, name);
+    server_node.addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in)); // allocates memory for struct
+    set_socket_addr(ip, port, server_node.addr);
+
+    send_connect_to_network(broadcast_socket);      
 
     while (1)
     {
@@ -330,13 +345,12 @@ int run_node(const char *name, const char *ip, const int port, const int backlog
 
             if (FD_ISSET(i, &ready_write_sockets))
             {
-                /* TODO: handle write*/
                 if (messages[i] != NULL)
                 {
-                    char data[MAX_DATA_SIZE];
-                    size_t msg_len = dequeue(messages[i], data);
+                    char data[QUEUE_MAX_DATA_SIZE];
                     for (int j = 0; j < messages[i]->len; j++)
                     {
+                        size_t msg_len = dequeue(messages[i], data);
                         message_interchange_out(i, data, msg_len, port);
                     }
                 }
@@ -344,4 +358,3 @@ int run_node(const char *name, const char *ip, const int port, const int backlog
         }
     }
 }
-

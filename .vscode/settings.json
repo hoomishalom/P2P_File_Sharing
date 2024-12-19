@@ -12,7 +12,9 @@
         "server.h": "c",
         "time.h": "c",
         "message_queue.h": "c",
-        "stdbool.h": "c"
+        "stdbool.h": "c",
+        "stat.h": "c",
+        "server_client.h": "c"
     },
     "todohighlight.include": [
         "**/*.c",

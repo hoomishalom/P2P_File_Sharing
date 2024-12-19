@@ -1,11 +1,6 @@
-#include "headers/message_queue.h"
+#include "headers/server_client.h"
 
-int main() {
-    MessageQueue queue;
-    queue_init(&queue);
-    enqueue(&queue, "Hello", 5);
-    char data[MAX_DATA_SIZE];
-    dequeue(&queue, data);
-    printf(data);
-    return 0;
+int main() 
+{
+    run_node("testName", "127.0.0.1", 8080, 32);
 }

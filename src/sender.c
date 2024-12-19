@@ -1,2 +1,2 @@
-#include "../headers/main_headers.h"
+#include "../headers/main.h"
 
