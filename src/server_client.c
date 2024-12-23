@@ -13,19 +13,24 @@ typedef struct
 } node_s;
 
 node_s server_node;
+node_s tcp_socket;  // TODO:
+node_s broadcasting_socket; // TODO:
+node_s udp_socket;  // TODO:
 
 size_t connected_nodes = 0;
 node_s *nodes[MAX_NODES];
 MessageQueue *messages[MAX_NODES];
+
+bool run = true;    // variable fot the program loop
 
 bool busy = false;  // true if we in the proccess of sending a file
 MessageQueue *return_messages;  /* if a node tries to send a file while we are busy, we will store it's adreess and send a message when we are done */
 
 // Helper functions
 
-static void handle_errors(const char *msg, const char *format)
+static void handle_errors(const char *msg, const char *info)
 {
-    snprintf(err_msg, SERVER_ERR_MSG_LEN, "%s: %s\n", msg, format);
+    snprintf(err_msg, SERVER_ERR_MSG_LEN, "%s: %s\n", msg, info);
     fprintf(SERVER_stddbg, err_msg);
 }
 
@@ -70,20 +75,54 @@ static node_s* get_node_by_id(const char *id)
 }
 
 
-static int cleanip()
+static bool is_name_available(const char *name)
+{
+    for (size_t i = 0; i < connected_nodes; i++) {
+        if (nodes[i]->name == name) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+static int cleanup(int sockets[], int connected_sockets)
 {
     free(server_node.addr); // frees server_node addr
-    for (size_t i = 0; i < connected_nodes; i++)
-    {
-        free(nodes[i]->addr);   // frees node addr
-        free(nodes[i]); // frees node
-        del_queue(messages[i]); // frees message queue
+    for (size_t i = 0; i < connected_nodes; i++) {
+        if (nodes[i] != NULL && messages[i] != NULL) {
+            free(nodes[i]->addr);   // frees node addr
+            free(nodes[i]); // frees node
+            del_queue(messages[i]); // frees message queue
+
+            nodes[i] == NULL;
+            messages[i] == NULL;
+        }
     }
+
+    for (size_t i = 0; i < connected_sockets; i++) {
+        close(sockets[i]);  // closes socket
+    }
+
+    return 0;
+}
+
+
+static int append_message(int socket, char *message)
+{
+    if (messages[socket] == NULL) {
+        handle_errors("append_message - bad socket", strerror(errno));
+        return -1;
+    }
+
+    enqueue(messages[socket], message, strlen(message));
+    return 0;
 }
 
 
 // Server functions
-static int set_socket_addr(const char *ip,const int port, struct sockaddr_in *server_addr) 
+static int set_socket_addr(const char *ip, const int port, struct sockaddr_in *server_addr) 
 {
     // sets server_addr
     server_addr->sin_family = AF_INET; // sets protocol family
@@ -165,12 +204,11 @@ static int create_broadcast_socket(struct sockaddr_in *server_addr, int reuseadd
         handle_errors("create_server - Error binding server socket", strerror(errno));
         return -4;
     }
-
-    
     return socket_fd;
 }
 
 
+// begin outbound networking functions
 int send_connect_to_network(int broadcasting_socket)
 {
     int port = ntohs(server_node.addr->sin_port);
@@ -186,7 +224,7 @@ int send_connect_to_network(int broadcasting_socket)
     ssize_t sent_bytes = sendto(broadcasting_socket, packet, strlen(packet), 0, (struct sockaddr*)&broadcast_addr, sizeof(broadcast_addr));
     if(sent_bytes == -1)
     {
-        handle_errors("broadcast_out - Error sending broadcast packet", strerror(errno));
+        handle_errors("send_connect_to_network - Error sending broadcast packet", strerror(errno));
         return -1;
     }
     return 0;
@@ -206,25 +244,28 @@ int send_approve_node_connection(const int out_socket, const char *node_id)
     ssize_t sent_bytes = sendto(out_socket, packet, strlen(packet), 0, (struct sockaddr*)node->addr, sizeof(*(node->addr)));
     if (sent_bytes == -1)
     {
-        handle_errors("broadcast_out_approve - Error sending broadcast message", strerror(errno));
+        handle_errors("send_approve_node_connection - Error sending broadcast message", strerror(errno));
         return -1;
     }
     return 0;
 }
 
 
-int send_disapprove_node_connection(const int out_socket, const char *node_ip, int node_port, const char *disapprove_reason)
+int send_disapprove_node_connection(const int out_socket, const char *node_ip, int node_port, const int disapprove_reason)
 {
     struct sockaddr_in node_addr;
     set_socket_addr(node_ip, node_port, &node_addr);
 
+    char *disapprove_reason_str[DISAPPROVE_REASON_LEN];
+    snprintf(disapprove_reason_str, DISAPPROVE_REASON_LEN, "%d", disapprove_reason);
+
     char packet[MAX_PACKET_SIZE];
-    make_packet("", MSG_TYPE_NETCONN_DISAPPROVED, disapprove_reason, packet);
+    make_packet("", MSG_TYPE_NETCONN_DISAPPROVED, itoa(disapprove_reason), packet);
 
     ssize_t sent_bytes = sendto(out_socket, packet, strlen(packet), 0, (struct sockaddr*)&node_addr, sizeof(node_addr));
     if (sent_bytes == -1)
     {
-        handle_errors("broadcast_out_disapprove - Error sending broadcast message", strerror(errno));
+        handle_errors("send_disapprove_node_connection - Error sending broadcast message", strerror(errno));
         return -1;
     }
     return 0;
@@ -233,66 +274,194 @@ int send_disapprove_node_connection(const int out_socket, const char *node_ip, i
 
 int send_node_disconnect(int socket)
 {
-    // TODO:
-    // del_queue(messages[socket]);
+    struct sockaddr_in broadcast_addr;
+    set_socket_addr("255.255.255.255", server_node.id, &broadcast_addr);
 
+    char *packet[MAX_PACKET_SIZE];
+    make_packet(server_node.id, MSG_TYPE_NETDISC, "", packet);
+
+    int sent_bytes = sendto(socket, packet, strlen(packet), 0, (struct sockaddr*)&broadcast_addr, sizeof(broadcast_addr));
+    if (sent_bytes == -1) {
+        handle_errors("send_node_disconnect - failed sending message", strerror(errno));
+        return -1;
+    }
+    return 0;
 }
 
 
-static int message_interchange_out(int socket, char *message, size_t len, int port)
+int message_interchange_out(int socket, char *message)
 {
     char *id = strtok(message, PACKET_DELIMITER);
     int type = atoi(strtok(NULL, PACKET_DELIMITER));
     char *data = strtok(NULL, PACKET_DELIMITER);
 
-    switch(type)
-    {
+    switch(type) {
         case MSG_TYPE_NETCONN:
-            send_connect_to_network(socket);
+            if (send_connect_to_network(socket) != 0) {
+                return -1;
+            }
+            break;
+        case MSG_TYPE_NETDISC:
+            if (send_node_disconnect(socket) != 0) {
+                return -1;
+            }
             break;
         case MSG_TYPE_NETCONN_APPROVED:
-            send_approve_node_connection(socket, id);
+            if (send_approve_node_connection(socket, id) != 0) {
+                return -1;
+            }
             break;
         case MSG_TYPE_NETCONN_DISAPPROVED:
             char *node_ip = strtok(data, DATA_DELIMITER);
             int node_port = atoi(strtok(NULL, DATA_DELIMITER));
             char *disapprove_reason = strtok(NULL, DATA_DELIMITER);
-            send_disapprove_node_connection(socket, node_ip, node_port, disapprove_reason);
-            break;
-        case MSG_TYPE_NETDISC:
-            send_node_disconnect(socket);
+            if (send_disapprove_node_connection(socket, node_ip, node_port, disapprove_reason) != 0) {
+                return -1;
+            }
             break;
         case MSG_TYPE_SENDREQ:
             break;
         case MSG_TYPE_SENDANS:
             break;
+        default:
+            handle_errors("message_interchange_out - bad type", strerror(errno));
+            return -1;
     }
+    return 0;
+}
+// end outbound networking functions
+
+// begin inbound networking functions
+int recieve_node_connection(const int socket, const char *node_id, const char *node_name, const struct sockaddr_in *node_addr)
+{
+    if (connected_nodes >= MAX_NODES) {
+        send_disapprove_node_connection(socket, inet_ntoa(node_addr->sin_addr), ntohs(node_addr->sin_port), DISAPPROVE_REASON_FULL);
+        handle_errors("recieve_node_connection - too many nodes", strerror(errno));
+        return -1;
+    }
+
+
+    if (strlen(node_name) > NODE_NAME_LEN) {
+        send_disapprove_node_connection(socket, inet_ntoa(node_addr->sin_addr), ntohs(node_addr->sin_port), DISAPPROVE_REASON_NAME_TOO_LONG);
+        handle_errors("recieve_node_connection - name too long", strerror(errno));
+        return -2;
+    }
+
+    if (!is_name_available(node_name)) {
+        send_disapprove_node_connection(socket, inet_ntoa(node_addr->sin_addr), ntohs(node_addr->sin_port), DISAPPROVE_REASON_NAME_TAKEN);
+        handle_errors("recieve_node_connection - name not available", strerror(errno));
+        return -3;
+    }
+
+    node_s *node = (node_s*)malloc(sizeof(node_s));
+    if (node == NULL) {
+        handle_errors("recieve_node_connection - failed to allocate memory", strerror(errno));
+        return -4;
+    }
+
+    strcpy(node->id, node_id);
+    strcpy(node->name, node_name);
+    node->addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
+    memcpy(node->addr, node_addr, sizeof(struct sockaddr_in));
+
+    nodes[connected_nodes] = node;
+    messages[connected_nodes] = (MessageQueue*)malloc(sizeof(MessageQueue));
+    queue_init(messages[connected_nodes]);
+
+    connected_nodes++;
+
+    send_approve_node_connection(socket, node_id);
+
+    return 0;
 }
 
+
+int message_interchange_in(const int socket, char *message, const struct sockaddr_in *addr)
+{
+    char *id = strtok(message, PACKET_DELIMITER);
+    int type = atoi(strtok(NULL, PACKET_DELIMITER));
+    char *data = strtok(NULL, PACKET_DELIMITER);
+
+    int return_code = 0;
+
+    switch(type) {
+        case MSG_TYPE_NETCONN:
+            char *name = strtok(data, DATA_DELIMITER);
+            if (recieve_node_connection(socket, id, name, addr) != 0) {
+                return -1;
+            }
+        case MSG_TYPE_NETDISC:
+            break;
+        case MSG_TYPE_NETCONN_APPROVED:
+            break;
+        case MSG_TYPE_NETCONN_DISAPPROVED:
+            break;
+        case MSG_TYPE_SENDREQ:
+            break;
+        case MSG_TYPE_SENDANS:
+            break;
+        default:
+            handle_errors("message_interchange_in - bad type", strerror(errno));
+            return -1;
+    }
+
+    return 0;
+}
+// end inbound networking functions
+
+// begin outbound user interface functions
+int connect(int socket)
+{
+    char connect_message[MAX_PACKET_SIZE];
+    make_packet("", MSG_TYPE_NETCONN, "", connect_message);
+
+    if (append_message(socket, connect_message) == -1) {
+        return -1;
+    }
+
+    return 0;
+}
+
+void disconnect()
+{
+    run = false;
+}
+
+// end outboud user interface functions
 
 int run_node(const char *name, const char *ip, const int port, const int backlog)
 {
     // setup server address and sockets
     struct sockaddr_in server_addr;
-    if (set_socket_addr(ip, port, &server_addr) < 0)
-    {
+    if (set_socket_addr(ip, port, &server_addr) < 0) {
         handle_errors("run_node - Error setting node address", strerror(errno));
         return -1;
     }
 
     int listen_socket = create_listen_socket(&server_addr, 1, backlog);
-    if (listen_socket < 0)
-    {
+    if (listen_socket < 0) {
         handle_errors("run_node - Error creating listen_socket", strerror(errno));
         return -2;
     }
 
     int broadcast_socket = create_broadcast_socket(&server_addr, 1, 1, backlog);
-    if (broadcast_socket < 0)
-    {
-        handle_errors("run server - Error creating broadcast socket", strerror(errno));
+    if (broadcast_socket < 0) {
+        handle_errors("run_node - Error creating broadcast socket", strerror(errno));
         return -3;
     }
+
+    // array of connected sockets
+    int sockets[FD_SETSIZE];    // FD_SETSIZE is the largest aomunt of sockets the node can handle
+    int connected_sockets = 0;
+
+    sockets[connected_sockets] = listen_socket;
+    connected_sockets++;
+
+    sockets[connected_sockets] = broadcast_socket;
+    connected_sockets++;
+
+    queue_init(messages[listen_socket]);
+    queue_init(messages[broadcast_socket]);
 
     // setup fd_sets
     fd_set read_sockets;
@@ -312,49 +481,63 @@ int run_node(const char *name, const char *ip, const int port, const int backlog
     server_node.addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in)); // allocates memory for struct
     set_socket_addr(ip, port, server_node.addr);
 
-    send_connect_to_network(broadcast_socket);      
+    struct timeval timeout;
 
-    while (1)
-    {
+    // appends MSG_TYPE_NETCONN packet to broadcast socket messages
+    if (connect(broadcast_socket) == -1) { 
+        handle_errors("run_node - failed connection", strerror(errno));
+        return -4;
+    }
+
+    while (run) {
         fd_set ready_read_sockets = read_sockets;
         fd_set ready_write_sockets = write_sockets;
+        
+        timeout.tv_sec = RUN_NODE_TIMEOUT_SECONDS;  
+        timeout.tv_usec = RUN_NODE_TIMEOUT_USECONDS;  
 
-        int ready_amount;
-        ready_amount = select(max_fd + 1, &ready_read_sockets, &ready_write_sockets, NULL, NULL);
+        int activity;
+        activity = select(max_fd + 1, &ready_read_sockets, &ready_write_sockets, NULL, &timeout);
 
-        if (ready_amount == -1)
-        {
+        if (activity == -1) {
             handle_errors("run_node - Error in select", strerror(errno));
             return -4;
         }
 
-        for (int i = 3; i < max_fd + 1; i++) // i = 3 because 0, 1, 2 are reserved to stdin, stdout, stderr resepctively
-        {
-            if(FD_ISSET(i, &ready_read_sockets))
-            {
-                if (i == listen_socket) // New Transfer Request
-                {
-                    /* TODO: implement new connection*/
-                }
+        for (int i = 3; i < max_fd + 1; i++) { // i = 3 because 0, 1, 2 are reserved to stdin, stdout, stderr resepctively
+            if(FD_ISSET(i, &ready_read_sockets)) {
+                if (i == broadcast_socket) {
+                    struct sockaddr_in recieved_addr;
+                    char recieved_packet[MAX_PACKET_SIZE];
+                    int recieved_bytes = recvfrom(i, recieved_packet, MAX_PACKET_SIZE, 0, (struct sockaddr*)&recieved_addr, sizeof(recieved_addr));
 
-                if (i == broadcast_socket) // New Node Connecting To Network
-                {
-                    /* TODO: implement adding nodes to the network*/
+                    if (recieved_bytes == -1) {
+                        handle_errors("run_node - recieved bad packet", strerror);
+                    } else {
+                        recieved_packet[recieved_bytes] = '\0'; // add null terminator to string
+                        message_interchange_in(i, recieved_packet, &recieved_addr);
+                    }
+                }
+                else if (i == listen_socket) {
                 }
             }
 
-            if (FD_ISSET(i, &ready_write_sockets))
-            {
-                if (messages[i] != NULL)
-                {
+            if (FD_ISSET(i, &ready_write_sockets)) {
+                if (messages[i] != NULL) {
                     char data[QUEUE_MAX_DATA_SIZE];
-                    for (int j = 0; j < messages[i]->len; j++)
-                    {
+                    for (int j = 0; j < messages[i]->len; j++) {
                         size_t msg_len = dequeue(messages[i], data);
-                        message_interchange_out(i, data, msg_len, port);
+                        message_interchange_out(i, data);
                     }
                 }
             }
         }
     }
+
+    char message[MAX_PACKET_SIZE];
+    make_packet("", MSG_TYPE_NETDISC, "", message);
+    message_interchange_out(broadcast_socket, message);
+
+    cleanup(sockets, connected_sockets);
+    return 0;
 }
