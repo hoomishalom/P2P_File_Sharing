@@ -23,11 +23,11 @@
 
 
     /*
-    initializes a queue struct
+    initializes a queue struct (does not check if malloc worked)
 
-    @param queue pointer to the queue struct
+    @param queue pointer to pointer to the queue struct
     */
-    void queue_init(MessageQueue *queue);
+    void queue_init(MessageQueue **queue);
 
     /*
     checks if a queue is empty

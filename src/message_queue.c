@@ -1,11 +1,12 @@
 #include "../headers/message_queue.h"
 
 
-void queue_init(MessageQueue *queue)
+void queue_init(MessageQueue **queue)
 {
-    queue->head = NULL;
-    queue->tail = NULL;
-    queue->len = 0;
+    *queue = (MessageQueue *)malloc(sizeof(MessageQueue));
+    (*queue)->head = NULL;
+    (*queue)->tail = NULL;
+    (*queue)->len = 0;
 }
 
 int is_empty(MessageQueue *queue)
