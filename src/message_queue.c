@@ -1,4 +1,4 @@
-#include "../headers/message_queue.h"
+#include "../include/message_queue.h"
 
 
 void queue_init(MessageQueue **queue)
@@ -72,3 +72,11 @@ size_t dequeue(MessageQueue *queue, char data[])
     return len;
 }
 
+
+void print_queue(MessageQueue *queue) {
+    Message *tmp = queue->head;
+    while (tmp != NULL) {
+        printf("%s\n", tmp->data);
+        tmp = tmp->next;
+    }
+}
