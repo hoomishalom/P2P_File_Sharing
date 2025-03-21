@@ -1,20 +1,20 @@
-#include "../headers/encrypt_decrypt.h"
+#include "../include/encrypt_decrypt.h"
 
 extern int errno;       // error number from <errno.h>
 
-char err_msg[ENC_DEC_ERR_MSG_LEN]; // buffer for error messages
+char ENCRYPT_DECRYPT_err_msg[ENC_DEC_ERR_MSG_LEN]; // buffer for error messages
 
 // Helper functions
 
 static void handle_errors(const char *msg, const char *format)
 {
-    snprintf(err_msg, ENC_DEC_ERR_MSG_LEN, "%s: %s\n", msg, format);
-    fprintf(ENC_DEC_stddbg, err_msg);
+    snprintf(ENCRYPT_DECRYPT_err_msg, ENC_DEC_ERR_MSG_LEN, "%s: %s\n", msg, format);
+    fprintf(ENC_DEC_stddbg, ENCRYPT_DECRYPT_err_msg);
 }
 
 // AES-GCM encryptions/decryption functions
 
-int encrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char *key, const char *iv, char *tag) 
+int encrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const unsigned char *key, const unsigned char *iv, char *tag) 
 {
     char *file_name = basename(input_filepath); // gets the file name from the input file path
     char file_path_name_buffer[ENC_DEC_FILE_PATH_LEN];   // buffer to combine output_filepath and file_name
@@ -85,7 +85,7 @@ int encrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char
 }
 
 
-int decrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const char *key, const char *iv, char *tag) 
+int decrypt_file_aes_gcm(char *input_filepath, char *output_filepath, const unsigned char *key, const unsigned char *iv, char *tag) 
 {
     const char *file_name = basename(input_filepath); // gets the file name from the input file path
     char file_path_name_buffer[ENC_DEC_FILE_PATH_LEN];   // buffer to combine output_filepath and file_name
