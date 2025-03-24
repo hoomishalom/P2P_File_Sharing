@@ -19,6 +19,8 @@
 
 #define ENC_DEC_CHUNK_SIZE 1024    // size of the chunks to be read from the file when enrypting/decrypting
 
+#define FILE_PATH_LEN 1024  // max length of the file path
+
 /*
 initliazes the program
 
