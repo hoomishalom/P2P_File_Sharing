@@ -25,10 +25,6 @@
 #define ERR_MSG_LEN 1024  // max error message length
 #endif  // ERR_MSG_LEN
 
-#ifndef FILE_PATH_LEN
-#define FILE_PATH_LEN 1024  // max length of the file path
-#endif
-
 #define DEFAULT_PORT 5005
 
 typedef struct {
@@ -45,13 +41,6 @@ typedef struct {
 #define OPT_DISC 3
 #define OPT_HELP 9
 
-/*
-initliazes the program
-
-@param dir_name name for session directory, NULL for default
-@return exit code
-*/
-int init_encrypt_decrypt(char *dir_name);
-
+#define OPT_LIST_AMOUNT -1  // amount of nodes that will be listed, -1 for all
 
 #endif  // MAIN_HEADERS_H_INCLUDED

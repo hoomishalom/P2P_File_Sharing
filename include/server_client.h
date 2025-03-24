@@ -25,7 +25,7 @@
 // Node structre
 
 #define NODE_ID_LEN 16
-#define NODE_NAME_LEN 32
+#define NODE_NAME_LEN 128
 
 struct node_s;
 typedef struct{
@@ -36,7 +36,7 @@ typedef struct{
 
 // Timeouts
 
-#define RUN_NODE_TIMEOUT_SECONDS 5 // timeout for run_node [Seconds]
+#define RUN_NODE_TIMEOUT_SECONDS 1 // timeout for run_node [Seconds]
 #define RUN_NODE_TIMEOUT_USECONDS 0 // timeout for run_node [USeconds]
 
 // Message Types
@@ -208,5 +208,16 @@ int network_connect(int socket);
 disconnects from the network
 */
 void network_disconnect();
+
+
+// API
+
+/*
+gets a list of connected nodes
+@param amount amount of nodes (or less if aren't enough), -1 for all
+@param connected_amount output pointer to the amount of connected nodes
+@return an array of nodes, needs to be freed
+*/
+node_s *get_connected_nodes(size_t amount, size_t *connected_amount);
 
 #endif

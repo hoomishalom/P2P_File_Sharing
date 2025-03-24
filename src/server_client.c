@@ -12,11 +12,12 @@ node_s tcp_socket;  // TODO:
 node_s broadcasting_socket; // TODO:
 node_s udp_socket;  // TODO:
 
-size_t connected_nodes = 0;
-node_s *nodes[MAX_NODES];
-MessageQueue *messages[MAX_NODES];
+static size_t connected_nodes = 0;
+static node_s *nodes[MAX_NODES];
+static MessageQueue *messages[MAX_NODES];
 
 bool run = true;    // variable fot the program loop
+bool write_waiting = false;     // true if there is something to write
 
 bool busy = false;  // true if we in the proccess of sending a file
 MessageQueue *return_messages;  /* if a node tries to send a file while we are busy, we will store it's adreess and send a message when we are done */
@@ -188,6 +189,7 @@ static int append_message(int socket, char *message)
     }
 
     enqueue(messages[socket], message, strlen(message));
+    write_waiting = true;   // tells the program there is something to write
     return 0;
 }
 
@@ -387,10 +389,10 @@ int send_disapprove_node_connection(const int out_socket, const char *node_ip, i
 
 int message_interchange_out(int socket, char *message)
 {
+    char *id = strsep(&message, PACKET_DELIMITER);
+    int type = atoi(strsep(&message, PACKET_DELIMITER));
+    char *data = strsep(&message, PACKET_DELIMITER);
 
-    char *id = strtok(message, PACKET_DELIMITER);
-    int type = atoi(strtok(NULL, PACKET_DELIMITER));
-    char *data = strtok(NULL, PACKET_DELIMITER);
 
     switch(type) {
         case MSG_TYPE_NETCONN:
@@ -612,8 +614,25 @@ void network_disconnect()
 {
     run = false;
 }
-
 // end outboud user interface functions
+
+// API
+node_s *get_connected_nodes(size_t amount, size_t *connected_amount)
+{
+    if (amount > connected_nodes) amount = connected_nodes;
+    *connected_amount = connected_nodes;
+
+    node_s *array = (node_s *)malloc(amount * sizeof(node_s));
+    if (!verify_malloc(__func__, array)) {
+        network_disconnect();   // malloc failed so something bad happend, thus we quit
+        return NULL;
+    }
+
+    for (size_t i = 0; i < amount && nodes[i] != NULL; ++i) {
+        array[i] = *nodes[i];
+    }
+    return array;
+}
 
 int run_node(const char *name, const char *ip, const int port, const int backlog)
 { 
@@ -688,8 +707,8 @@ int run_node(const char *name, const char *ip, const int port, const int backlog
         return -1;
     }
 
+
     while (run) {
-        sleep(1);
         // for (size_t i = 0; i < connected_nodes; i++) {
         //     printf("%s, ", nodes[i]->name);
         //     // printf("%d: %d\n", i, messages[i]->len);
@@ -697,8 +716,13 @@ int run_node(const char *name, const char *ip, const int port, const int backlog
         // }
         // printf("\n");
         fd_set ready_read_sockets = read_sockets;
-        fd_set ready_write_sockets = write_sockets;
-        
+        fd_set ready_write_sockets;
+        if (write_waiting) {
+            ready_write_sockets = write_sockets;
+        } else {
+            FD_ZERO(&ready_write_sockets);
+        }
+
         timeout.tv_sec = RUN_NODE_TIMEOUT_SECONDS;
         timeout.tv_usec = RUN_NODE_TIMEOUT_USECONDS;  
 
@@ -708,7 +732,7 @@ int run_node(const char *name, const char *ip, const int port, const int backlog
             handle_errors("run_node - Error in select", strerror(errno));
             return -1;
         }
-
+        
         
         if (activity > 0){
             for (int i = 3; i < max_fd + 1; i++) { // i = 3 because 0, 1, 2 are reserved to stdin, stdout, stderr resepctively
@@ -724,21 +748,21 @@ int run_node(const char *name, const char *ip, const int port, const int backlog
                         // inet_ntop(AF_INET, &(received_addr.sin_addr), ip_str, sizeof(ip_str));
                         // printf("IP Address: %s\n", ip_str);
                         // printf("Port: %d\n", ntohs(received_addr.sin_port));
-
+                        
                         if (received_bytes == -1) {
                             handle_errors("run_node - received bad packet", strerror(errno));
                         } else {
                             received_packet[received_bytes] = '\0'; // add null terminator to string
-
+                            
                             // printf("received packet: %s from: %s:%d\n", received_packet, ip_str, ntohs(received_addr.sin_port));
-
+                            
                             message_interchange_in(i, received_packet, &received_addr);
                         }
                     }
                     else if (i == listen_socket) {
                     }
                 }
-
+                
                 if (FD_ISSET(i, &ready_write_sockets)) {
                     if (!is_empty(messages[i])) {
                         char data[QUEUE_MAX_DATA_SIZE];
@@ -746,6 +770,7 @@ int run_node(const char *name, const char *ip, const int port, const int backlog
                             size_t msg_len __attribute__((unused)) = dequeue(messages[i], data);
                             message_interchange_out(i, data);
                         }
+                        write_waiting = false;
                     }
                 }
             }

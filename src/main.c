@@ -5,6 +5,7 @@
 #include "../include/encrypt_decrypt.h"
 
 extern int errno;   // error number from <errno.h>
+extern char *session_path;
 
 char err_msg[ERR_MSG_LEN];  // buffer for error messages
 
@@ -22,61 +23,61 @@ static void thread_function_run_node(args_s *args) {
 }
 
 
-static void clear() {
-    system("clear");
-}
-
-// Initialization
-
-char tmp_template[FILE_PATH_LEN] = "/tmp/files_XXXXXX"; // template for mkdtemp function
-char tmp_path[FILE_PATH_LEN];  // path of tmp function, output of mkdtemp function
-
-mode_t session_mode = S_IRWXU | S_IROTH;    // modes for session folder
-char *session_name = "/.session";    // name of the session dir
-char session_path[FILE_PATH_LEN] = "";  // path of the session dir, output of mkdir function
-
-int init_encrypt_decrypt(char *dir_name) {
-    strcpy(tmp_path, tmp_template);
-
-    if (!mkdtemp(tmp_path)) {
-        handle_errors("init_encrypt_decrypt - creating temp dir failed", strerror(errno));
-        return -1;
-    }
-    printf("%s\n", tmp_path);
-
-    if (dir_name != NULL) { // user inputed dir_name
-        session_name = dir_name;
-    }
-
-    // create session_path
-    strcat(session_path, tmp_path);
-    strcat(session_path, session_name);
-
-    if (mkdir(session_path, session_mode) == -1) {  // try to make the session dir
-        handle_errors("init_encrypt_decrypt - creating session dir failed", strerror(errno));
-        return -1; 
-    }
-    return 0;
-}
-
-
-void print_options() {
+static void print_options() {
     printf("\n\n");
     printf("Options:\n");
-    printf("\t1 - Send a file\n");
-    printf("\t2 - list connected nodes\n");
-    printf("\t3 - disconnect from networks\n");
-    printf("\t9 - help\n");
+    printf("\t%d - Send a file\n", OPT_SEND);
+    printf("\t%d - list connected nodes\n", OPT_LIST);
+    printf("\t%d - disconnect from networks\n", OPT_DISC);
+    printf("\t%d - help\n", OPT_HELP);
     printf("\n");
 
     printf("Enter option: ");
     
 }
 
+
+static void clear_screen() 
+{
+    fflush(stdout);
+    system("clear");
+}
+
+
+static void clear_input() 
+{
+    while (getchar() != '\n' && getchar() != EOF);
+}
+
+// TUI
+
+static void list_nodes() 
+{
+    size_t connected_amount;
+    node_s *nodes = get_connected_nodes(OPT_LIST_AMOUNT, &connected_amount);
+    if (!nodes) return; // no nodes connected or malloc failed
+    
+    size_t amount = OPT_LIST_AMOUNT == -1 ? connected_amount : OPT_LIST_AMOUNT;
+    amount = OPT_LIST_AMOUNT > connected_amount ? connected_amount : amount;
+    printf("%zu nodes listed out of %zu nodes connected\n", amount, connected_amount);
+    for (size_t i = 0; i < amount; ++i) {
+        printf("Node %ld:\n", i);
+        printf("\tID:   %s\n", nodes[i].id);
+        printf("\tName: %s\n", nodes[i].name);
+        printf("\tIP:   %s\n", inet_ntoa(nodes[i].addr->sin_addr));
+        printf("\tPort: %d\n", ntohs(nodes[i].addr->sin_port));
+    }
+
+    free(nodes);
+}
+
+
 int main(int argc, char *argv[])
 {
     // argv[1] - name of the node, NULL for default
     // argv[2] - port of the node, NULL for default
+
+    clear_screen();
 
     // starting the node
     char name[NODE_NAME_LEN];
@@ -121,26 +122,29 @@ int main(int argc, char *argv[])
     while (1) {
         print_options();
         fgets(input, 2, stdin);
+        clear_screen();
         switch(atoi(input)) {
             case OPT_ERR:
-                clear();
                 printf("error - please enter a valid input");
                 break;
             case OPT_SEND:
-                printf("unimplemented\n");
+                printf("unimplemented");
                 break;
             case OPT_LIST:
-                printf("unimplemented\n");
+                list_nodes();
                 break;
             case OPT_DISC:
-                printf("unimplemented\n");
+                printf("unimplemented");
                 break;
             case OPT_HELP:
-                printf("unimplemented\n");
+                printf("unimplemented");
                 break;
-
+            default:
+                printf("error - no %d option", atoi(input));
+                break;
         }
 
+        clear_input();
     }
 
     // freeing memory
