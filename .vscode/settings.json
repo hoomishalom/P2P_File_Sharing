@@ -14,7 +14,11 @@
         "message_queue.h": "c",
         "stdbool.h": "c",
         "stat.h": "c",
-        "server_client.h": "c"
+        "server_client.h": "c",
+        "unistd.h": "c",
+        "receiver.h": "c",
+        "main.h": "c",
+        "sender.h": "c"
     },
     "todohighlight.include": [
         "**/*.c",
