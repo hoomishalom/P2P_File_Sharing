@@ -1,4 +1,4 @@
-#ifndef SERVER_H_INCLUDED // include gaurd
+#ifndef SERVER_H_INCLUDED   /* include gaurd */
 #define SERVER_H_INCLUDED
 
 #include <string.h>
