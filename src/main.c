@@ -3,6 +3,7 @@
 #include "../include/receiver.h"
 #include "../include/server_client.h"
 #include "../include/encrypt_decrypt.h"
+#include "../include/shared_mutex.h"
 
 extern int errno;   // error number from <errno.h>
 extern char *session_path;

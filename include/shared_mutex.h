@@ -3,7 +3,7 @@
 
 #include <pthread.h>
 
-extern pthread_mutex_t get_connected_nodes_mutex;
+extern pthread_mutex_t nodes_mutex;
 
 
 #endif

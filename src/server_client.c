@@ -1,5 +1,7 @@
 #include "../include/server_client.h"
 #include "../include/message_queue.h"
+#include "../include/shared_mutex.h"
+
 
 extern int errno;   // error number from <errno.h>
 
@@ -97,6 +99,8 @@ lookups node struct based on id (from the nodes array)
 */
 static node_s* get_node_by_id(const char *id)
 {
+    pthread_mutex_lock(&nodes_mutex);
+
     for (size_t i = 0; i < connected_nodes; i++)
     {
         if (strcmp(nodes[i]->id, id) == 0)
@@ -104,6 +108,8 @@ static node_s* get_node_by_id(const char *id)
             return nodes[i];
         }
     }
+
+    pthread_mutex_unlock(&nodes_mutex);
     return NULL;    // node does not exist
 }
 
@@ -116,12 +122,15 @@ checks if the name is availtable for use
 */
 static bool is_name_available(const char *name)
 {
+    pthread_mutex_lock(&nodes_mutex);
+
     for (size_t i = 0; i < connected_nodes; i++) {
         if (strcmp(nodes[i]->name, name) == 0) {
             return false;
         }
     }
 
+    pthread_mutex_unlock(&nodes_mutex);
     return true;
 }
 
@@ -153,6 +162,8 @@ frees allocated memory and closes sockets
 */
 static int cleanup(int sockets[], size_t connected_sockets)
 {
+    pthread_mutex_lock(&nodes_mutex);
+
     free(server_node.addr); // frees server_node addr
     server_node.addr = NULL;
 
@@ -171,6 +182,7 @@ static int cleanup(int sockets[], size_t connected_sockets)
         close(sockets[i]);  // closes socket
     }
 
+    pthread_mutex_unlock(&nodes_mutex);
     return 0;
 }
 
@@ -460,7 +472,9 @@ int add_node(const char *id, const char *name, const struct sockaddr_in *addr, i
     }
     memcpy(node->addr, addr, sizeof(struct sockaddr_in));
 
+    pthread_mutex_lock(&nodes_mutex);
     nodes[connected_nodes] = node;
+    pthread_mutex_unlock(&nodes_mutex);
 
     queue_init(&(messages[connected_nodes]));
     if (!verify_malloc("add_node", messages[connected_nodes])) {
@@ -517,11 +531,12 @@ int handle_received_node_connection(const int socket, const char *node_id, const
 
 int handle_received_node_disconnect(const char *id, const struct sockaddr_in *addr)
 {
+    pthread_mutex_lock(&nodes_mutex);   // aquires the mutex for the nodes array
     node_s *node = get_node_by_id(id);
     if (node == NULL) {
         return -1;
     }
-
+    
     size_t i;
     for (i = 0; i < connected_nodes; i++) {
         if (nodes[i] == node) {
@@ -532,14 +547,15 @@ int handle_received_node_disconnect(const char *id, const struct sockaddr_in *ad
     free(node->addr);
     free(node);
     free(messages[i]);
-
+    
     for (size_t j = i; j < connected_nodes - 1; j++) {
         nodes[j] = nodes[j + 1];
         messages[j] = messages[j + 1];
     }
-
+    
     connected_nodes--;
-
+    
+    pthread_mutex_unlock(&nodes_mutex); // releases mutex
     return 0;
 }
 
@@ -619,6 +635,8 @@ void network_disconnect()
 // API
 node_s *get_connected_nodes(size_t amount, size_t *connected_amount)
 {
+    pthread_mutex_lock(&nodes_mutex);
+
     if (amount > connected_nodes) amount = connected_nodes;
     *connected_amount = connected_nodes;
 
@@ -631,6 +649,8 @@ node_s *get_connected_nodes(size_t amount, size_t *connected_amount)
     for (size_t i = 0; i < amount && nodes[i] != NULL; ++i) {
         array[i] = *nodes[i];
     }
+
+    pthread_mutex_unlock(&nodes_mutex);
     return array;
 }
 
