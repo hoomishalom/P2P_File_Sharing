@@ -1,2 +1,0 @@
-rsync --timeout=1 -avz -e ssh --exclude 'sync.sh' ./* hoomi@192.168.50.133:~/Desktop/coding/P2P_File_Sharing/
-rsync --timeout=1 -avz -e ssh --exclude 'sync.sh' ./* hoomi_s12pro@192.168.50.28:/home/hoomi_s12pro/p2p_file_sharing/
