@@ -1,2 +1,8 @@
+TODO: transform the way information gets sent to cJSON instead of the current (messy) state
+TODO: finish TUI
 TODO: implement a heartbeat system
-TODO: handle incoming packets
+TODO: move to cmake instead of makefile
+TODO: add a way to verify the identity of a node, a keypair which would be a permenant way to identitfy the node (Ed25519, ECDSA, etc)
+
+
+low priority TODO: possibly make it usable on WAN
