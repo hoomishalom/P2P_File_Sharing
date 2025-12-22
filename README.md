@@ -1,3 +1,6 @@
+# Status: Archived (Proof of Concept) Development on this project has concluded. 
+The core P2P handshake and file transfer protocols are implemented, serving as a reference implementation for custom TCP application-layer protocols.
+
 # README
 
 ## Requirements
